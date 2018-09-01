@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download and save BTC-USD tick data from coinmarketcap.com.
+"""Download and save BTC-USD tick data from bitcoincharts.com.
 
 Example:
     ./data.py ticks.csv
@@ -7,6 +7,7 @@ Example:
 import argparse
 import datetime
 import io
+import pdb
 import requests
 import sys
 
@@ -38,14 +39,14 @@ def main():
     args = get_args()
     logger = get_logger()
 
-    download_start_time = datetime.datetime.now().timestamp()
-    data_start_time = 0
+    download_start_time = datetime.datetime.now()
+    data_start_time = datetime.datetime.fromtimestamp(0)
 
     results = []
 
     while True:
-        response = requests.get(
-            f'{BASE_URL}?symbol={SYMBOL}&start={data_start_time}')
+        response = requests.get(f'{BASE_URL}?symbol={SYMBOL}&start='
+                                f'{int(data_start_time.timestamp())}')
 
         if not response.ok:
             logger.error('Request failed.')
@@ -54,13 +55,17 @@ def main():
         result = pd.read_csv(io.StringIO(response.text),
                              names=('time', 'price', 'amount'))
 
-        data_start_time = int(result.iloc[-1].time)
+        if len(result) == 0:
+            break
+
+        result.time = result.time.apply(datetime.datetime.fromtimestamp)
+
+        logger.info(f'Received {len(result)} ticks from {data_start_time}')
+
+        data_start_time = result.iloc[-1].time
         results.append(result[result.time < data_start_time])
 
-        logger.info(f'Received {len(result)} ticks from '
-                    f'{datetime.datetime.fromtimestamp(data_start_time)}')
-
-        if data_start_time > download_start_time or len(result) == 1:
+        if data_start_time > download_start_time:
             break
 
     pd.concat(results, ignore_index=True).to_csv(args.data, index=False)
