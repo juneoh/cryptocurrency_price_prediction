@@ -6,18 +6,15 @@ import logging.handlers
 import os
 
 
-def get_logger():
+def get_logger(log_file):
     """Prepare formatted logger to stream and file.
+
+    Args:
+        log_file (str): The file to save the logs into.
 
     Returns:
         logging.Logger: The logger object.
     """
-    # Prepare log directory.
-    try:
-        os.mkdir('logs')
-    except FileExistsError:
-        pass
-
     # Create logger and formatter.
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -30,7 +27,7 @@ def get_logger():
 
     # Create and attach file handler.
     file_handler = logging.handlers.TimedRotatingFileHandler(
-        'logs/log.txt', when='d', encoding='utf-8')
+        log_file, when='d', encoding='utf-8')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
