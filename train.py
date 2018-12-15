@@ -291,6 +291,13 @@ def train(model, loss_function, optimizer, data):
     return loss_sum / len(data)
 
 
+def predictive_value(trues, falses):
+    if trues == 0 and falses == 0:
+        return 0
+    else:
+        return trues / (trues + falses)
+
+
 def evaluate(model, data):
     """Evaluate the model on the given data.
 
@@ -299,10 +306,13 @@ def evaluate(model, data):
         data (torch.utils.data.DataLoader): The data to train on.
 
     Returns:
-        (float): The overall precision.
+        (tuple of float): The overall Positive Predictive Value (PPV) and 
+            Negative Predictive Value (NPV).
     """
     true_positives_total = 0
-    positives_total = 0
+    true_negatives_total = 0
+    false_positives_total = 0
+    false_negatives_total = 0
 
     # Set the model on evaluatio mode.
     model.eval()
@@ -310,7 +320,7 @@ def evaluate(model, data):
     # Create progress bar.
     progress_bar = tqdm.tqdm(total=len(data),
                              unit='batch',
-                             desc='[evaluate] batch precision: 0.00000',
+                             desc='[evaluate] PPV 0.00, NPV 0.00',
                              leave=False)
 
     # Loop through validation batches.
@@ -329,22 +339,30 @@ def evaluate(model, data):
         predictions = torch.sigmoid(outputs).squeeze().cpu() >= 0.5
         targets = targets.type(torch.ByteTensor).squeeze()
 
-        true_positives = sum(predictions & targets).item()
-        positives = sum(predictions).item()
-        batch_precision = 0 if positives == 0 else true_positives / positives
+        true_positives = torch.sum(predictions & targets).item()
+        true_negatives = torch.sum(~predictions & ~targets).item()
+        false_positives = torch.sum(predictions & ~targets).item()
+        false_negatives = torch.sum(~predictions & targets).item()
+        ppv = predictive_value(true_positives, false_positives)
+        npv = predictive_value(true_negatives, false_negatives)
 
         progress_bar.update(1)
         progress_bar.set_description(
-            f'[evaluate] batch precision: {batch_precision:.5f}')
+            f'[evaluate] PPV {ppv:.2f}, NPV {npv:.2f}')
 
         # Accumulate metrics.
         true_positives_total += true_positives
-        positives_total += positives
+        true_negatives_total += true_negatives
+        false_positives_total += false_positives
+        false_negatives_total += false_negatives
 
     # Close progress bar.
     progress_bar.close()
 
-    return 0 if positives_total == 0 else true_positives_total / positives_total
+    ppv = predictive_value(true_positives_total, false_positives_total)
+    npv = predictive_value(true_negatives_total, false_negatives_total)
+
+    return ppv, npv
 
 
 def main():
@@ -408,8 +426,8 @@ def main():
 
     # If the number of epochs is 0, validate once.
     if args.num_epochs == 0:
-        accuracy = evaluate(model, data_val)
-        logger.info(f'Validation accuracy: {accuracy:.5f}')
+        ppv, npv = evaluate(model, data_val)
+        logger.info(f'Validation: PPV {ppv:.2f}, NPV {npv:.2f}')
 
     # Loop epochs.
     for epoch in range(args.num_epochs):
@@ -421,8 +439,8 @@ def main():
         logger.info(f'  - [training] mean loss: {mean_loss:.5f}')
 
         # Validate.
-        precision = evaluate(model, data_val)
-        logger.info(f'  - [validation] precision: {precision:.5f}')
+        ppv, npv = evaluate(model, data_val)
+        logger.info(f'  - [validation] PPV {ppv:.2f}, NPV {npv:.2f}')
 
         # Save model state.
         if (epoch + 1) % args.save_every == 0:
